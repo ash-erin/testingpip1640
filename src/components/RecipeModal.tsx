@@ -1,6 +1,7 @@
 import React from 'react';
 import { X, Clock, Users, ChefHat, Heart, Share2, Utensils } from 'lucide-react';
 import { Recipe } from '../hooks/useRecipes';
+import { ImageService } from '../services/ImageService';
 
 interface RecipeModalProps {
   isOpen: boolean;
@@ -25,7 +26,7 @@ export const RecipeModal: React.FC<RecipeModalProps> = ({
           <div className="inline-block w-full max-w-4xl my-8 overflow-hidden text-left align-middle transition-all transform bg-slate-900 shadow-xl rounded-2xl">
             <div className="p-8 text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto"></div>
-              <p className="text-white mt-4">Loading recipe...</p>
+              <p className="text-white mt-4">Loading recipe details...</p>
             </div>
           </div>
         </div>
@@ -35,14 +36,12 @@ export const RecipeModal: React.FC<RecipeModalProps> = ({
 
   if (!recipe) return null;
 
-  // Generate placeholder image
-  const getImageUrl = () => {
-    const keywords = recipe.title.toLowerCase().split(' ').slice(0, 2).join('-');
-    return `https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg?auto=compress&cs=tinysrgb&w=800&h=400&fit=crop&q=${keywords}`;
-  };
-
-  // Format ingredients
+  // Format ingredients from database
   const formatIngredients = () => {
+    if (!recipe.recipe_ingredients || recipe.recipe_ingredients.length === 0) {
+      return ['No ingredients listed'];
+    }
+
     return recipe.recipe_ingredients
       .map(ri => {
         let ingredient = ri.ingredient.name;
@@ -54,17 +53,32 @@ export const RecipeModal: React.FC<RecipeModalProps> = ({
       .sort();
   };
 
-  // Format instructions
+  // Format instructions from database
   const formatInstructions = () => {
+    if (!recipe.recipe_steps || recipe.recipe_steps.length === 0) {
+      return ['No instructions available'];
+    }
+
     return recipe.recipe_steps
       .sort((a, b) => (a.step_number || 0) - (b.step_number || 0))
       .map(step => step.instruction)
       .filter(Boolean);
   };
 
-  // Get tools
+  // Get tools from database
   const getTools = () => {
+    if (!recipe.recipe_tools || recipe.recipe_tools.length === 0) {
+      return [];
+    }
     return recipe.recipe_tools.map(rt => rt.tool.name);
+  };
+
+  // Get tags from database
+  const getTags = () => {
+    if (!recipe.recipe_tags || recipe.recipe_tags.length === 0) {
+      return [];
+    }
+    return recipe.recipe_tags.map(rt => rt.tag.name);
   };
 
   return (
@@ -81,9 +95,13 @@ export const RecipeModal: React.FC<RecipeModalProps> = ({
           {/* Header */}
           <div className="relative">
             <img
-              src={getImageUrl()}
+              src={recipe.image_url || ImageService.getFallbackImage(recipe.title, recipe.cuisine?.name)}
               alt={recipe.title}
               className="w-full h-64 object-cover"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.src = ImageService.getFallbackImage(recipe.title, recipe.cuisine?.name);
+              }}
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
             
@@ -106,8 +124,8 @@ export const RecipeModal: React.FC<RecipeModalProps> = ({
 
           <div className="p-6">
             {/* Recipe Info */}
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center space-x-6 text-gray-300">
+            <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+              <div className="flex items-center space-x-6 text-gray-300 flex-wrap gap-2">
                 {recipe.total_time_minutes && (
                   <div className="flex items-center space-x-2">
                     <Clock className="w-5 h-5" />
@@ -145,10 +163,28 @@ export const RecipeModal: React.FC<RecipeModalProps> = ({
               </div>
             </div>
 
+            {/* Tags */}
+            {getTags().length > 0 && (
+              <div className="mb-6">
+                <div className="flex flex-wrap gap-2">
+                  {getTags().map((tag, index) => (
+                    <span
+                      key={index}
+                      className="px-3 py-1 bg-slate-700 text-gray-300 rounded-full text-sm"
+                    >
+                      #{tag}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               {/* Ingredients */}
               <div>
-                <h3 className="text-xl font-bold text-white mb-4">Ingredients</h3>
+                <h3 className="text-xl font-bold text-white mb-4">
+                  Ingredients ({formatIngredients().length})
+                </h3>
                 <ul className="space-y-2">
                   {formatIngredients().map((ingredient, index) => (
                     <li key={index} className="flex items-start space-x-3 text-gray-300">
@@ -178,7 +214,9 @@ export const RecipeModal: React.FC<RecipeModalProps> = ({
 
               {/* Instructions */}
               <div>
-                <h3 className="text-xl font-bold text-white mb-4">Instructions</h3>
+                <h3 className="text-xl font-bold text-white mb-4">
+                  Instructions ({formatInstructions().length} steps)
+                </h3>
                 <ol className="space-y-4">
                   {formatInstructions().map((instruction, index) => (
                     <li key={index} className="flex space-x-4">
@@ -199,6 +237,19 @@ export const RecipeModal: React.FC<RecipeModalProps> = ({
                 <p className="text-gray-300">{recipe.notes}</p>
               </div>
             )}
+
+            {/* Recipe Stats */}
+            <div className="mt-6 pt-6 border-t border-slate-700">
+              <div className="flex items-center justify-between text-sm text-gray-400">
+                <div className="flex items-center space-x-4">
+                  <span>❤️ {recipe.likes_count} likes</span>
+                  <span>📅 Added {recipe.created_at ? new Date(recipe.created_at).toLocaleDateString() : 'Unknown'}</span>
+                </div>
+                <div className="text-xs">
+                  Recipe ID: {recipe.id}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

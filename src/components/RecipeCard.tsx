@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Heart, Clock, Users, ChefHat } from 'lucide-react';
 import { Recipe } from '../hooks/useRecipes';
+import { ImageService } from '../services/ImageService';
 
 interface RecipeCardProps {
   recipe: Recipe;
@@ -17,6 +18,7 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [saved, setSaved] = useState(isSaved);
+  const [imageError, setImageError] = useState(false);
 
   const handleSave = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -28,17 +30,38 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
     onView?.(recipe.id);
   };
 
-  // Generate a placeholder image URL based on recipe title
-  const getImageUrl = () => {
-    const keywords = recipe.title.toLowerCase().split(' ').slice(0, 2).join('-');
-    return `https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg?auto=compress&cs=tinysrgb&w=400&h=300&fit=crop&q=${keywords}`;
+  const handleImageError = () => {
+    setImageError(true);
   };
 
+  // Get image URL with fallback
+  const getImageUrl = () => {
+    if (imageError) {
+      return ImageService.getFallbackImage(recipe.title, recipe.cuisine?.name);
+    }
+    return recipe.image_url || ImageService.getFallbackImage(recipe.title, recipe.cuisine?.name);
+  };
+
+  // Get difficulty level based on time or default to "Medium"
   const getDifficultyLevel = () => {
-    const totalTime = recipe.total_time_minutes || 30;
+    if (!recipe.total_time_minutes) return 'Medium';
+    
+    const totalTime = recipe.total_time_minutes;
     if (totalTime <= 20) return 'Easy';
     if (totalTime <= 45) return 'Medium';
     return 'Hard';
+  };
+
+  // Format ingredients count
+  const getIngredientsCount = () => {
+    const count = recipe.recipe_ingredients?.length || 0;
+    return count > 0 ? `${count} ingredients` : 'No ingredients listed';
+  };
+
+  // Format steps count
+  const getStepsCount = () => {
+    const count = recipe.recipe_steps?.length || 0;
+    return count > 0 ? `${count} steps` : 'No steps listed';
   };
 
   return (
@@ -55,10 +78,8 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
             src={getImageUrl()}
             alt={recipe.title}
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-            onError={(e) => {
-              const target = e.target as HTMLImageElement;
-              target.src = 'https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg?auto=compress&cs=tinysrgb&w=400&h=300&fit=crop';
-            }}
+            onError={handleImageError}
+            loading="lazy"
           />
           
           {/* Gradient Overlay */}
@@ -86,6 +107,15 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
               {getDifficultyLevel()}
             </span>
           </div>
+
+          {/* Meal Type Badge */}
+          {recipe.meal_type && (
+            <div className="absolute bottom-3 left-3">
+              <span className="px-2 py-1 bg-orange-500 text-white rounded-full text-xs font-medium">
+                {recipe.meal_type}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Content */}
@@ -119,17 +149,40 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
             {recipe.cuisine && (
               <div className="flex items-center space-x-1">
                 <ChefHat className="w-4 h-4" />
-                <span>{recipe.cuisine.name}</span>
+                <span className="truncate max-w-20">{recipe.cuisine.name}</span>
               </div>
             )}
           </div>
 
-          {/* Likes */}
+          {/* Additional Info */}
+          <div className="text-xs text-gray-500 mb-3">
+            <div>{getIngredientsCount()}</div>
+            <div>{getStepsCount()}</div>
+          </div>
+
+          {/* Likes and Tags */}
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-1 text-gray-400 text-sm">
               <Heart className="w-4 h-4" />
               <span>{recipe.likes_count} likes</span>
             </div>
+            
+            {/* Tags */}
+            {recipe.recipe_tags && recipe.recipe_tags.length > 0 && (
+              <div className="flex space-x-1">
+                {recipe.recipe_tags.slice(0, 2).map((tagItem, index) => (
+                  <span
+                    key={index}
+                    className="px-2 py-1 bg-slate-700 text-gray-300 rounded text-xs"
+                  >
+                    {tagItem.tag.name}
+                  </span>
+                ))}
+                {recipe.recipe_tags.length > 2 && (
+                  <span className="text-gray-500 text-xs">+{recipe.recipe_tags.length - 2}</span>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

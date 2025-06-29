@@ -294,6 +294,29 @@ export interface Database {
           ingredient_id?: string
         }
       }
+      recipe_images: {
+        Row: {
+          id: string
+          recipe_id: string
+          image_path: string
+          is_primary: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          recipe_id: string
+          image_path: string
+          is_primary?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          recipe_id?: string
+          image_path?: string
+          is_primary?: boolean
+          created_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never

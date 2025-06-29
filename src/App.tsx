@@ -7,7 +7,7 @@ import { LoadingSpinner } from './components/LoadingSpinner';
 import { ErrorMessage } from './components/ErrorMessage';
 import { RealtimeStatus } from './components/RealtimeStatus';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { useRecipes, useCuisines, useRecipeById, usePopularRecipes } from './hooks/useRecipes';
+import { useRecipes, useCuisines, useRecipeById, usePopularRecipes, useDatabaseStats } from './hooks/useRecipes';
 import { useRealtimeSync } from './hooks/useRealtimeSync';
 
 function App() {
@@ -23,6 +23,7 @@ function App() {
   const { cuisines, loading: cuisinesLoading, error: cuisinesError, refetch: refetchCuisines } = useCuisines();
   const { recipes: popularRecipes, loading: popularLoading, error: popularError } = usePopularRecipes();
   const { recipe: selectedRecipe, loading: recipeLoading } = useRecipeById(selectedRecipeId || '');
+  const { stats, loading: statsLoading } = useDatabaseStats();
 
   const handleViewRecipe = (id: string) => {
     setSelectedRecipeId(id);
@@ -42,7 +43,7 @@ function App() {
   };
 
   // Show loading state while initial data is loading
-  if (recipesLoading && cuisinesLoading) {
+  if (recipesLoading && cuisinesLoading && statsLoading) {
     return (
       <ErrorBoundary>
         <Layout>
@@ -72,14 +73,14 @@ function App() {
           <div className="bg-slate-900 min-h-screen flex items-center justify-center">
             <div className="text-center max-w-md">
               <ErrorMessage 
-                message={recipesError || cuisinesError || 'Failed to load data'} 
+                message={recipesError || cuisinesError || 'Failed to load data from database'} 
                 onRetry={() => {
                   refetchRecipes();
                   refetchCuisines();
                 }}
               />
               <div className="mt-4 p-4 bg-slate-800 rounded-lg text-left">
-                <h4 className="text-white font-semibold mb-2">🔧 Connection Details:</h4>
+                <h4 className="text-white font-semibold mb-2">🔧 Database Connection Details:</h4>
                 <p className="text-gray-300 text-sm">URL: whguiexyhsfqhrjtjpru.supabase.co</p>
                 <p className="text-gray-300 text-sm">Status: {recipesError || cuisinesError}</p>
                 <p className="text-gray-300 text-sm">Real-time: {isConnected ? 'Connected' : 'Disconnected'}</p>
@@ -94,9 +95,12 @@ function App() {
     );
   }
 
-  // Group recipes by cuisine
+  // Group recipes by cuisine (only show cuisines that have recipes)
   const recipesByCuisine = cuisines.reduce((acc, cuisine) => {
-    acc[cuisine.name] = allRecipes.filter(recipe => recipe.cuisine_id === cuisine.id);
+    const cuisineRecipes = allRecipes.filter(recipe => recipe.cuisine_id === cuisine.id);
+    if (cuisineRecipes.length > 0) {
+      acc[cuisine.name] = cuisineRecipes;
+    }
     return acc;
   }, {} as Record<string, typeof allRecipes>);
 
@@ -129,12 +133,18 @@ function App() {
                 <div className="flex items-center space-x-2">
                   <div className={`w-2 h-2 rounded-full animate-pulse ${isConnected ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
                   <span className="text-green-400 text-sm">
-                    ✅ Connected to Supabase • {allRecipes.length} recipes loaded
+                    ✅ Connected to Supabase • {stats.totalRecipes} recipes • {stats.totalCuisines} cuisines
                   </span>
                   <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-blue-500' : 'bg-gray-500'}`}></div>
                   <span className="text-blue-400 text-sm">
                     Real-time: {isConnected ? 'Active' : 'Inactive'}
                   </span>
+                  {stats.hasImages && (
+                    <>
+                      <div className="w-2 h-2 rounded-full bg-purple-500"></div>
+                      <span className="text-purple-400 text-sm">Images: Connected</span>
+                    </>
+                  )}
                 </div>
                 <button
                   onClick={() => setShowRealtimeStatus(!showRealtimeStatus)}
@@ -145,7 +155,7 @@ function App() {
               </div>
               {cuisines.length > 0 && (
                 <div className="mt-2 text-xs text-green-300">
-                  📂 {cuisines.length} cuisines available: {cuisines.map(c => c.name).join(', ')}
+                  📂 Available cuisines: {cuisines.map(c => c.name).join(', ')}
                 </div>
               )}
             </div>
@@ -158,19 +168,21 @@ function App() {
             )}
           </div>
 
-          {/* Popular This Week */}
-          <ErrorBoundary fallback={<div className="p-8 text-center text-red-400">Error loading popular recipes</div>}>
-            <RecipeCarousel
-              title="🔥 Popular This Week"
-              recipes={popularRecipes}
-              onViewRecipe={handleViewRecipe}
-              onSaveRecipe={handleSaveRecipe}
-              loading={popularLoading}
-              error={popularError}
-            />
-          </ErrorBoundary>
+          {/* Popular This Week - Only show if we have recipes */}
+          {popularRecipes.length > 0 && (
+            <ErrorBoundary fallback={<div className="p-8 text-center text-red-400">Error loading popular recipes</div>}>
+              <RecipeCarousel
+                title="🔥 Popular This Week"
+                recipes={popularRecipes}
+                onViewRecipe={handleViewRecipe}
+                onSaveRecipe={handleSaveRecipe}
+                loading={popularLoading}
+                error={popularError}
+              />
+            </ErrorBoundary>
+          )}
 
-          {/* All Recipes if no cuisine-specific data */}
+          {/* All Recipes - Only show if we have recipes */}
           {allRecipes.length > 0 && (
             <ErrorBoundary fallback={<div className="p-8 text-center text-red-400">Error loading all recipes</div>}>
               <RecipeCarousel
@@ -183,25 +195,20 @@ function App() {
             </ErrorBoundary>
           )}
 
-          {/* Cuisine Categories */}
-          {!cuisinesLoading && cuisines.slice(0, 4).map(cuisine => {
-            const cuisineRecipes = recipesByCuisine[cuisine.name] || [];
-            if (cuisineRecipes.length === 0) return null;
-            
-            return (
-              <ErrorBoundary key={cuisine.id} fallback={<div className="p-8 text-center text-red-400">Error loading {cuisine.name} recipes</div>}>
-                <RecipeCarousel
-                  title={`🌍 ${cuisine.name} Cuisine`}
-                  recipes={cuisineRecipes}
-                  onViewRecipe={handleViewRecipe}
-                  onSaveRecipe={handleSaveRecipe}
-                  loading={recipesLoading}
-                />
-              </ErrorBoundary>
-            );
-          })}
+          {/* Cuisine Categories - Only show cuisines that have recipes */}
+          {Object.entries(recipesByCuisine).map(([cuisineName, cuisineRecipes]) => (
+            <ErrorBoundary key={cuisineName} fallback={<div className="p-8 text-center text-red-400">Error loading {cuisineName} recipes</div>}>
+              <RecipeCarousel
+                title={`🌍 ${cuisineName} Cuisine`}
+                recipes={cuisineRecipes}
+                onViewRecipe={handleViewRecipe}
+                onSaveRecipe={handleSaveRecipe}
+                loading={recipesLoading}
+              />
+            </ErrorBoundary>
+          ))}
 
-          {/* Quick & Easy */}
+          {/* Quick & Easy - Only show if we have quick recipes */}
           {quickRecipes.length > 0 && (
             <ErrorBoundary fallback={<div className="p-8 text-center text-red-400">Error loading quick recipes</div>}>
               <RecipeCarousel
@@ -214,7 +221,7 @@ function App() {
             </ErrorBoundary>
           )}
 
-          {/* Recently Added */}
+          {/* Recently Added - Only show if we have recent recipes */}
           {recentRecipes.length > 0 && (
             <ErrorBoundary fallback={<div className="p-8 text-center text-red-400">Error loading recent recipes</div>}>
               <RecipeCarousel
@@ -227,10 +234,10 @@ function App() {
             </ErrorBoundary>
           )}
 
-          {/* Empty State */}
+          {/* Empty State - Only show if no recipes at all */}
           {!recipesLoading && allRecipes.length === 0 && (
             <div className="text-center py-16">
-              <h3 className="text-2xl font-bold text-white mb-4">📭 No recipes found</h3>
+              <h3 className="text-2xl font-bold text-white mb-4">📭 No recipes found in database</h3>
               <p className="text-gray-400 mb-6">
                 Your Supabase database is connected but doesn't contain any recipes yet.
               </p>
@@ -239,6 +246,9 @@ function App() {
                 <p className="text-green-400 text-sm">✅ Connected to: whguiexyhsfqhrjtjpru.supabase.co</p>
                 <p className={`text-sm mt-1 ${isConnected ? 'text-blue-400' : 'text-yellow-400'}`}>
                   🔄 Real-time sync: {isConnected ? 'Active' : 'Inactive'}
+                </p>
+                <p className="text-gray-400 text-sm mt-2">
+                  📊 Database contains: {stats.totalRecipes} recipes, {stats.totalCuisines} cuisines, {stats.totalIngredients} ingredients
                 </p>
                 <p className="text-gray-400 text-sm mt-2">
                   Add some recipes to your database to see them here!

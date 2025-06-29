@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { realtimeService } from '../services/RealtimeService';
 import { cacheService } from '../services/CacheService';
+import { ImageService } from '../services/ImageService';
 import { useRealtimeData } from './useRealtimeSync';
 
 export interface Recipe {
@@ -15,7 +16,9 @@ export interface Recipe {
   notes: string | null;
   likes_count: number;
   created_at: string | null;
+  image_url?: string; // Added for image integration
   cuisine?: {
+    id: string;
     name: string;
   };
   recipe_ingredients: Array<{
@@ -42,12 +45,17 @@ export interface Recipe {
   }>;
 }
 
+export interface Cuisine {
+  id: string;
+  name: string;
+}
+
 export const useRecipes = (cuisineFilter?: string, limit?: number) => {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Set up real-time data listener
+  // Set up real-time data listeners
   useRealtimeData('recipe', (payload) => {
     console.log('🔄 Recipe data changed, refreshing...');
     fetchRecipes();
@@ -80,13 +88,13 @@ export const useRecipes = (cuisineFilter?: string, limit?: number) => {
         return;
       }
 
-      console.log('🔍 Fetching recipes from Supabase...');
+      console.log('🔍 Fetching recipes from Supabase database...');
 
       let query = supabase
         .from('recipes')
         .select(`
           *,
-          cuisine:cuisines(name),
+          cuisine:cuisines(id, name),
           recipe_ingredients(
             amount,
             descriptor,
@@ -107,7 +115,7 @@ export const useRecipes = (cuisineFilter?: string, limit?: number) => {
         .order('created_at', { ascending: false });
 
       if (cuisineFilter) {
-        // First get the cuisine ID
+        // Filter by cuisine name
         const { data: cuisineData } = await supabase
           .from('cuisines')
           .select('id')
@@ -130,17 +138,42 @@ export const useRecipes = (cuisineFilter?: string, limit?: number) => {
         throw error;
       }
 
-      console.log('✅ Fetched recipes:', data?.length || 0);
+      console.log(`✅ Fetched ${data?.length || 0} recipes from database`);
+      
+      // Process recipes and add images
+      const processedRecipes = await Promise.all(
+        (data || []).map(async (recipe) => {
+          // Get image URL from storage
+          const imageUrl = await ImageService.getRecipeImageUrl(recipe.id);
+          
+          return {
+            ...recipe,
+            image_url: imageUrl,
+            // Ensure we have fallback values for missing data
+            title: recipe.title || 'Untitled Recipe',
+            description: recipe.description || 'No description available',
+            total_time_minutes: recipe.total_time_minutes || null,
+            servings: recipe.servings || null,
+            notes: recipe.notes || null,
+            likes_count: recipe.likes_count || 0,
+            meal_type: recipe.meal_type || null,
+            recipe_ingredients: recipe.recipe_ingredients || [],
+            recipe_steps: recipe.recipe_steps || [],
+            recipe_tools: recipe.recipe_tools || [],
+            recipe_tags: recipe.recipe_tags || []
+          };
+        })
+      );
       
       // Cache the results
-      if (data) {
-        cacheService.set(cacheKey, data, 2 * 60 * 1000); // Cache for 2 minutes
+      if (processedRecipes.length > 0) {
+        cacheService.set(cacheKey, processedRecipes, 2 * 60 * 1000); // Cache for 2 minutes
       }
       
-      setRecipes(data || []);
+      setRecipes(processedRecipes);
     } catch (err) {
       console.error('❌ Error fetching recipes:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch recipes');
+      setError(err instanceof Error ? err.message : 'Failed to fetch recipes from database');
     } finally {
       setLoading(false);
     }
@@ -186,13 +219,13 @@ export const useRecipeById = (id: string) => {
         return;
       }
 
-      console.log('🔍 Fetching recipe by ID:', id);
+      console.log('🔍 Fetching recipe by ID from database:', id);
 
       const { data, error } = await supabase
         .from('recipes')
         .select(`
           *,
-          cuisine:cuisines(name),
+          cuisine:cuisines(id, name),
           recipe_ingredients(
             amount,
             descriptor,
@@ -218,14 +251,35 @@ export const useRecipeById = (id: string) => {
         throw error;
       }
 
-      console.log('✅ Fetched recipe:', data?.title);
+      if (!data) {
+        throw new Error('Recipe not found');
+      }
+
+      console.log('✅ Fetched recipe:', data.title);
+      
+      // Get image URL and process recipe
+      const imageUrl = await ImageService.getRecipeImageUrl(data.id);
+      
+      const processedRecipe = {
+        ...data,
+        image_url: imageUrl,
+        title: data.title || 'Untitled Recipe',
+        description: data.description || 'No description available',
+        total_time_minutes: data.total_time_minutes || null,
+        servings: data.servings || null,
+        notes: data.notes || null,
+        likes_count: data.likes_count || 0,
+        meal_type: data.meal_type || null,
+        recipe_ingredients: data.recipe_ingredients || [],
+        recipe_steps: data.recipe_steps || [],
+        recipe_tools: data.recipe_tools || [],
+        recipe_tags: data.recipe_tags || []
+      };
       
       // Cache the result
-      if (data) {
-        cacheService.set(cacheKey, data, 5 * 60 * 1000); // Cache for 5 minutes
-      }
+      cacheService.set(cacheKey, processedRecipe, 5 * 60 * 1000); // Cache for 5 minutes
       
-      setRecipe(data);
+      setRecipe(processedRecipe);
     } catch (err) {
       console.error('❌ Error fetching recipe:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch recipe');
@@ -242,7 +296,7 @@ export const useRecipeById = (id: string) => {
 };
 
 export const useCuisines = () => {
-  const [cuisines, setCuisines] = useState<Array<{ id: string; name: string }>>([]);
+  const [cuisines, setCuisines] = useState<Cuisine[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -259,7 +313,7 @@ export const useCuisines = () => {
 
       // Try cache first
       const cacheKey = 'cuisines-all';
-      const cachedData = cacheService.get<Array<{ id: string; name: string }>>(cacheKey);
+      const cachedData = cacheService.get<Cuisine[]>(cacheKey);
       if (cachedData) {
         console.log('✅ Using cached cuisine data');
         setCuisines(cachedData);
@@ -267,7 +321,7 @@ export const useCuisines = () => {
         return;
       }
 
-      console.log('🔍 Fetching cuisines from Supabase...');
+      console.log('🔍 Fetching cuisines from database...');
 
       const { data, error } = await supabase
         .from('cuisines')
@@ -279,17 +333,23 @@ export const useCuisines = () => {
         throw error;
       }
 
-      console.log('✅ Fetched cuisines:', data?.length || 0);
+      console.log(`✅ Fetched ${data?.length || 0} cuisines from database`);
+      
+      // Process cuisines with fallback values
+      const processedCuisines = (data || []).map(cuisine => ({
+        id: cuisine.id,
+        name: cuisine.name || 'Unknown Cuisine'
+      }));
       
       // Cache the results
-      if (data) {
-        cacheService.set(cacheKey, data, 10 * 60 * 1000); // Cache for 10 minutes
+      if (processedCuisines.length > 0) {
+        cacheService.set(cacheKey, processedCuisines, 10 * 60 * 1000); // Cache for 10 minutes
       }
       
-      setCuisines(data || []);
+      setCuisines(processedCuisines);
     } catch (err) {
       console.error('❌ Error fetching cuisines:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch cuisines');
+      setError(err instanceof Error ? err.message : 'Failed to fetch cuisines from database');
     } finally {
       setLoading(false);
     }
@@ -328,13 +388,13 @@ export const usePopularRecipes = (limit: number = 6) => {
         return;
       }
 
-      console.log('🔍 Fetching popular recipes...');
+      console.log('🔍 Fetching popular recipes from database...');
 
       const { data, error } = await supabase
         .from('recipes')
         .select(`
           *,
-          cuisine:cuisines(name),
+          cuisine:cuisines(id, name),
           recipe_ingredients(
             amount,
             descriptor,
@@ -360,17 +420,40 @@ export const usePopularRecipes = (limit: number = 6) => {
         throw error;
       }
 
-      console.log('✅ Fetched popular recipes:', data?.length || 0);
+      console.log(`✅ Fetched ${data?.length || 0} popular recipes from database`);
+      
+      // Process recipes and add images
+      const processedRecipes = await Promise.all(
+        (data || []).map(async (recipe) => {
+          const imageUrl = await ImageService.getRecipeImageUrl(recipe.id);
+          
+          return {
+            ...recipe,
+            image_url: imageUrl,
+            title: recipe.title || 'Untitled Recipe',
+            description: recipe.description || 'No description available',
+            total_time_minutes: recipe.total_time_minutes || null,
+            servings: recipe.servings || null,
+            notes: recipe.notes || null,
+            likes_count: recipe.likes_count || 0,
+            meal_type: recipe.meal_type || null,
+            recipe_ingredients: recipe.recipe_ingredients || [],
+            recipe_steps: recipe.recipe_steps || [],
+            recipe_tools: recipe.recipe_tools || [],
+            recipe_tags: recipe.recipe_tags || []
+          };
+        })
+      );
       
       // Cache the results (shorter TTL for popular content)
-      if (data) {
-        cacheService.set(cacheKey, data, 1 * 60 * 1000); // Cache for 1 minute
+      if (processedRecipes.length > 0) {
+        cacheService.set(cacheKey, processedRecipes, 1 * 60 * 1000); // Cache for 1 minute
       }
       
-      setRecipes(data || []);
+      setRecipes(processedRecipes);
     } catch (err) {
       console.error('❌ Error fetching popular recipes:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch popular recipes');
+      setError(err instanceof Error ? err.message : 'Failed to fetch popular recipes from database');
     } finally {
       setLoading(false);
     }
@@ -381,4 +464,49 @@ export const usePopularRecipes = (limit: number = 6) => {
   }, [limit]);
 
   return { recipes, loading, error, refetch: fetchPopularRecipes };
+};
+
+// Hook to get database statistics
+export const useDatabaseStats = () => {
+  const [stats, setStats] = useState({
+    totalRecipes: 0,
+    totalCuisines: 0,
+    totalIngredients: 0,
+    hasImages: false
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        setLoading(true);
+
+        // Get counts from all tables
+        const [recipesResult, cuisinesResult, ingredientsResult] = await Promise.all([
+          supabase.from('recipes').select('count', { count: 'exact', head: true }),
+          supabase.from('cuisines').select('count', { count: 'exact', head: true }),
+          supabase.from('ingredients').select('count', { count: 'exact', head: true })
+        ]);
+
+        // Check if storage bucket exists
+        const hasImages = await ImageService.checkStorageAccess();
+
+        setStats({
+          totalRecipes: recipesResult.count || 0,
+          totalCuisines: cuisinesResult.count || 0,
+          totalIngredients: ingredientsResult.count || 0,
+          hasImages
+        });
+
+      } catch (error) {
+        console.error('❌ Error fetching database stats:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchStats();
+  }, []);
+
+  return { stats, loading };
 };
