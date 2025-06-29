@@ -23,7 +23,7 @@ function App() {
   };
 
   const handleSaveRecipe = async (id: string) => {
-    console.log('Saving recipe:', id);
+    console.log('💾 Saving recipe:', id);
     // TODO: Implement save functionality with Supabase
     // This would involve inserting into user_saved_recipes table
   };
@@ -40,7 +40,8 @@ function App() {
         <div className="bg-slate-900 min-h-screen flex items-center justify-center">
           <div className="text-center">
             <LoadingSpinner />
-            <p className="text-white mt-4">Loading recipes from database...</p>
+            <p className="text-white mt-4">🔄 Loading recipes from Supabase database...</p>
+            <p className="text-gray-400 text-sm mt-2">Connected to: whguiexyhsfqhrjtjpru.supabase.co</p>
           </div>
         </div>
       </Layout>
@@ -52,13 +53,20 @@ function App() {
     return (
       <Layout>
         <div className="bg-slate-900 min-h-screen flex items-center justify-center">
-          <ErrorMessage 
-            message={recipesError || cuisinesError || 'Failed to load data'} 
-            onRetry={() => {
-              refetchRecipes();
-              refetchCuisines();
-            }}
-          />
+          <div className="text-center max-w-md">
+            <ErrorMessage 
+              message={recipesError || cuisinesError || 'Failed to load data'} 
+              onRetry={() => {
+                refetchRecipes();
+                refetchCuisines();
+              }}
+            />
+            <div className="mt-4 p-4 bg-slate-800 rounded-lg text-left">
+              <h4 className="text-white font-semibold mb-2">🔧 Connection Details:</h4>
+              <p className="text-gray-300 text-sm">URL: whguiexyhsfqhrjtjpru.supabase.co</p>
+              <p className="text-gray-300 text-sm">Status: {recipesError || cuisinesError}</p>
+            </div>
+          </div>
         </div>
       </Layout>
     );
@@ -94,18 +102,28 @@ function App() {
         {/* Database Connection Status */}
         <div className="px-4 sm:px-6 lg:px-8 py-4">
           <div className="bg-green-900/20 border border-green-500/30 rounded-lg p-4">
-            <div className="flex items-center space-x-2">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <span className="text-green-400 text-sm">
-                Connected to Supabase • {allRecipes.length} recipes loaded
-              </span>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                <span className="text-green-400 text-sm">
+                  ✅ Connected to Supabase • {allRecipes.length} recipes loaded
+                </span>
+              </div>
+              <div className="text-xs text-green-300">
+                whguiexyhsfqhrjtjpru.supabase.co
+              </div>
             </div>
+            {cuisines.length > 0 && (
+              <div className="mt-2 text-xs text-green-300">
+                📂 {cuisines.length} cuisines available: {cuisines.map(c => c.name).join(', ')}
+              </div>
+            )}
           </div>
         </div>
 
         {/* Popular This Week */}
         <RecipeCarousel
-          title="Popular This Week"
+          title="🔥 Popular This Week"
           recipes={popularRecipes}
           onViewRecipe={handleViewRecipe}
           onSaveRecipe={handleSaveRecipe}
@@ -116,7 +134,7 @@ function App() {
         {/* All Recipes if no cuisine-specific data */}
         {allRecipes.length > 0 && (
           <RecipeCarousel
-            title="All Recipes"
+            title="🍽️ All Recipes"
             recipes={allRecipes.slice(0, 8)}
             onViewRecipe={handleViewRecipe}
             onSaveRecipe={handleSaveRecipe}
@@ -132,7 +150,7 @@ function App() {
           return (
             <RecipeCarousel
               key={cuisine.id}
-              title={`${cuisine.name} Cuisine`}
+              title={`🌍 ${cuisine.name} Cuisine`}
               recipes={cuisineRecipes}
               onViewRecipe={handleViewRecipe}
               onSaveRecipe={handleSaveRecipe}
@@ -144,7 +162,7 @@ function App() {
         {/* Quick & Easy */}
         {quickRecipes.length > 0 && (
           <RecipeCarousel
-            title="Quick & Easy (Under 30 mins)"
+            title="⚡ Quick & Easy (Under 30 mins)"
             recipes={quickRecipes}
             onViewRecipe={handleViewRecipe}
             onSaveRecipe={handleSaveRecipe}
@@ -155,7 +173,7 @@ function App() {
         {/* Recently Added */}
         {recentRecipes.length > 0 && (
           <RecipeCarousel
-            title="Recently Added"
+            title="🆕 Recently Added"
             recipes={recentRecipes}
             onViewRecipe={handleViewRecipe}
             onSaveRecipe={handleSaveRecipe}
@@ -166,13 +184,17 @@ function App() {
         {/* Empty State */}
         {!recipesLoading && allRecipes.length === 0 && (
           <div className="text-center py-16">
-            <h3 className="text-2xl font-bold text-white mb-4">No recipes found</h3>
+            <h3 className="text-2xl font-bold text-white mb-4">📭 No recipes found</h3>
             <p className="text-gray-400 mb-6">
-              It looks like there are no recipes in your database yet.
+              Your Supabase database is connected but doesn't contain any recipes yet.
             </p>
-            <p className="text-gray-500 text-sm">
-              Add some recipes to your Supabase database to see them here!
-            </p>
+            <div className="bg-slate-800 rounded-lg p-6 max-w-md mx-auto">
+              <h4 className="text-white font-semibold mb-2">🗄️ Database Status:</h4>
+              <p className="text-green-400 text-sm">✅ Connected to: whguiexyhsfqhrjtjpru.supabase.co</p>
+              <p className="text-gray-400 text-sm mt-2">
+                Add some recipes to your database to see them here!
+              </p>
+            </div>
           </div>
         )}
       </div>
