@@ -1,6 +1,8 @@
 import React, { useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { RecipeCard } from './RecipeCard';
+import { LoadingSpinner } from './LoadingSpinner';
+import { ErrorMessage } from './ErrorMessage';
 import { Recipe } from '../hooks/useRecipes';
 
 interface RecipeCarouselProps {
@@ -9,6 +11,7 @@ interface RecipeCarouselProps {
   onSaveRecipe?: (id: string) => void;
   onViewRecipe?: (id: string) => void;
   loading?: boolean;
+  error?: string | null;
 }
 
 export const RecipeCarousel: React.FC<RecipeCarouselProps> = ({
@@ -16,7 +19,8 @@ export const RecipeCarousel: React.FC<RecipeCarouselProps> = ({
   recipes,
   onSaveRecipe,
   onViewRecipe,
-  loading = false
+  loading = false,
+  error = null
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -46,6 +50,17 @@ export const RecipeCarousel: React.FC<RecipeCarouselProps> = ({
   React.useEffect(() => {
     checkScrollButtons();
   }, [recipes]);
+
+  if (error) {
+    return (
+      <div className="py-8">
+        <h2 className="text-2xl font-bold text-white mb-6 px-4 sm:px-6 lg:px-8">{title}</h2>
+        <div className="px-4 sm:px-6 lg:px-8">
+          <ErrorMessage message={error} />
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -80,31 +95,38 @@ export const RecipeCarousel: React.FC<RecipeCarouselProps> = ({
   return (
     <div className="py-8 relative">
       <div className="flex items-center justify-between mb-6 px-4 sm:px-6 lg:px-8">
-        <h2 className="text-2xl font-bold text-white">{title}</h2>
-        <div className="flex space-x-2">
-          <button
-            onClick={() => scroll('left')}
-            disabled={!canScrollLeft}
-            className={`p-2 rounded-full transition-colors duration-200 ${
-              canScrollLeft 
-                ? 'bg-slate-800 hover:bg-slate-700 text-white' 
-                : 'bg-slate-800/50 text-slate-500 cursor-not-allowed'
-            }`}
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </button>
-          <button
-            onClick={() => scroll('right')}
-            disabled={!canScrollRight}
-            className={`p-2 rounded-full transition-colors duration-200 ${
-              canScrollRight 
-                ? 'bg-slate-800 hover:bg-slate-700 text-white' 
-                : 'bg-slate-800/50 text-slate-500 cursor-not-allowed'
-            }`}
-          >
-            <ChevronRight className="w-5 h-5" />
-          </button>
-        </div>
+        <h2 className="text-2xl font-bold text-white">
+          {title} 
+          <span className="text-gray-400 text-base font-normal ml-2">
+            ({recipes.length} recipes)
+          </span>
+        </h2>
+        {recipes.length > 4 && (
+          <div className="flex space-x-2">
+            <button
+              onClick={() => scroll('left')}
+              disabled={!canScrollLeft}
+              className={`p-2 rounded-full transition-colors duration-200 ${
+                canScrollLeft 
+                  ? 'bg-slate-800 hover:bg-slate-700 text-white' 
+                  : 'bg-slate-800/50 text-slate-500 cursor-not-allowed'
+              }`}
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => scroll('right')}
+              disabled={!canScrollRight}
+              className={`p-2 rounded-full transition-colors duration-200 ${
+                canScrollRight 
+                  ? 'bg-slate-800 hover:bg-slate-700 text-white' 
+                  : 'bg-slate-800/50 text-slate-500 cursor-not-allowed'
+              }`}
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="relative">

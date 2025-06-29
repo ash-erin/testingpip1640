@@ -44,63 +44,76 @@ export const useRecipes = (cuisineFilter?: string, limit?: number) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchRecipes = async () => {
-      try {
-        setLoading(true);
-        setError(null);
+  const fetchRecipes = async () => {
+    try {
+      setLoading(true);
+      setError(null);
 
-        let query = supabase
-          .from('recipes')
-          .select(`
-            *,
-            cuisine:cuisines(name),
-            recipe_ingredients(
-              amount,
-              descriptor,
-              is_optional,
-              ingredient:ingredients(name)
-            ),
-            recipe_steps(
-              step_number,
-              instruction
-            ),
-            recipe_tools(
-              tool:tools(name)
-            ),
-            recipe_tags(
-              tag:tags(name)
-            )
-          `)
-          .order('created_at', { ascending: false });
+      console.log('Fetching recipes from Supabase...');
 
-        if (cuisineFilter) {
-          query = query.eq('cuisine.name', cuisineFilter);
+      let query = supabase
+        .from('recipes')
+        .select(`
+          *,
+          cuisine:cuisines(name),
+          recipe_ingredients(
+            amount,
+            descriptor,
+            is_optional,
+            ingredient:ingredients(name)
+          ),
+          recipe_steps(
+            step_number,
+            instruction
+          ),
+          recipe_tools(
+            tool:tools(name)
+          ),
+          recipe_tags(
+            tag:tags(name)
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (cuisineFilter) {
+        // First get the cuisine ID
+        const { data: cuisineData } = await supabase
+          .from('cuisines')
+          .select('id')
+          .eq('name', cuisineFilter)
+          .single();
+        
+        if (cuisineData) {
+          query = query.eq('cuisine_id', cuisineData.id);
         }
-
-        if (limit) {
-          query = query.limit(limit);
-        }
-
-        const { data, error } = await query;
-
-        if (error) {
-          throw error;
-        }
-
-        setRecipes(data || []);
-      } catch (err) {
-        console.error('Error fetching recipes:', err);
-        setError(err instanceof Error ? err.message : 'Failed to fetch recipes');
-      } finally {
-        setLoading(false);
       }
-    };
 
+      if (limit) {
+        query = query.limit(limit);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('Supabase error:', error);
+        throw error;
+      }
+
+      console.log('Fetched recipes:', data?.length || 0);
+      setRecipes(data || []);
+    } catch (err) {
+      console.error('Error fetching recipes:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch recipes');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchRecipes();
   }, [cuisineFilter, limit]);
 
-  return { recipes, loading, error };
+  return { recipes, loading, error, refetch: fetchRecipes };
 };
 
 export const useRecipeById = (id: string) => {
@@ -108,81 +121,159 @@ export const useRecipeById = (id: string) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchRecipe = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const { data, error } = await supabase
-          .from('recipes')
-          .select(`
-            *,
-            cuisine:cuisines(name),
-            recipe_ingredients(
-              amount,
-              descriptor,
-              is_optional,
-              ingredient:ingredients(name)
-            ),
-            recipe_steps(
-              step_number,
-              instruction
-            ),
-            recipe_tools(
-              tool:tools(name)
-            ),
-            recipe_tags(
-              tag:tags(name)
-            )
-          `)
-          .eq('id', id)
-          .single();
-
-        if (error) {
-          throw error;
-        }
-
-        setRecipe(data);
-      } catch (err) {
-        console.error('Error fetching recipe:', err);
-        setError(err instanceof Error ? err.message : 'Failed to fetch recipe');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (id) {
-      fetchRecipe();
+  const fetchRecipe = async () => {
+    if (!id) {
+      setLoading(false);
+      return;
     }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      console.log('Fetching recipe by ID:', id);
+
+      const { data, error } = await supabase
+        .from('recipes')
+        .select(`
+          *,
+          cuisine:cuisines(name),
+          recipe_ingredients(
+            amount,
+            descriptor,
+            is_optional,
+            ingredient:ingredients(name)
+          ),
+          recipe_steps(
+            step_number,
+            instruction
+          ),
+          recipe_tools(
+            tool:tools(name)
+          ),
+          recipe_tags(
+            tag:tags(name)
+          )
+        `)
+        .eq('id', id)
+        .single();
+
+      if (error) {
+        console.error('Supabase error:', error);
+        throw error;
+      }
+
+      console.log('Fetched recipe:', data);
+      setRecipe(data);
+    } catch (err) {
+      console.error('Error fetching recipe:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch recipe');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchRecipe();
   }, [id]);
 
-  return { recipe, loading, error };
+  return { recipe, loading, error, refetch: fetchRecipe };
 };
 
 export const useCuisines = () => {
   const [cuisines, setCuisines] = useState<Array<{ id: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchCuisines = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      console.log('Fetching cuisines from Supabase...');
+
+      const { data, error } = await supabase
+        .from('cuisines')
+        .select('*')
+        .order('name');
+
+      if (error) {
+        console.error('Supabase error:', error);
+        throw error;
+      }
+
+      console.log('Fetched cuisines:', data?.length || 0);
+      setCuisines(data || []);
+    } catch (err) {
+      console.error('Error fetching cuisines:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch cuisines');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchCuisines = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('cuisines')
-          .select('*')
-          .order('name');
-
-        if (error) throw error;
-        setCuisines(data || []);
-      } catch (err) {
-        console.error('Error fetching cuisines:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchCuisines();
   }, []);
 
-  return { cuisines, loading };
+  return { cuisines, loading, error, refetch: fetchCuisines };
+};
+
+export const usePopularRecipes = (limit: number = 6) => {
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchPopularRecipes = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      console.log('Fetching popular recipes...');
+
+      const { data, error } = await supabase
+        .from('recipes')
+        .select(`
+          *,
+          cuisine:cuisines(name),
+          recipe_ingredients(
+            amount,
+            descriptor,
+            is_optional,
+            ingredient:ingredients(name)
+          ),
+          recipe_steps(
+            step_number,
+            instruction
+          ),
+          recipe_tools(
+            tool:tools(name)
+          ),
+          recipe_tags(
+            tag:tags(name)
+          )
+        `)
+        .order('likes_count', { ascending: false })
+        .limit(limit);
+
+      if (error) {
+        console.error('Supabase error:', error);
+        throw error;
+      }
+
+      console.log('Fetched popular recipes:', data?.length || 0);
+      setRecipes(data || []);
+    } catch (err) {
+      console.error('Error fetching popular recipes:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch popular recipes');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPopularRecipes();
+  }, [limit]);
+
+  return { recipes, loading, error, refetch: fetchPopularRecipes };
 };
