@@ -3,7 +3,6 @@ import { Layout } from './components/Layout';
 import { HeroCarousel } from './components/HeroCarousel';
 import { RecipeCarousel } from './components/RecipeCarousel';
 import { RecipeModal } from './components/RecipeModal';
-import { mockRecipes, categories } from './data/mockData';
 import { Recipe } from './types';
 
 function App() {
